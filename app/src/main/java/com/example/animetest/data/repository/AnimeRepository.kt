@@ -3,8 +3,6 @@ package com.example.animetest.data.repository
 import com.example.animetest.data.api.AnimeApi
 import com.example.animetest.data.api.AnimeApiKtor
 import com.example.animetest.data.model.Anime
-import com.example.animetest.data.model.AnimeResponse
-import com.example.animetest.data.model.TopAnimeResponse
 import io.ktor.client.plugins.ClientRequestException
 import io.ktor.client.plugins.ServerResponseException
 import javax.inject.Inject
