@@ -64,12 +64,15 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.style.TextOverflow
 import com.example.animetest.presentation.components.YouTubePlayer
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlin.math.abs
 
 @Composable
 fun HomeScreen(
@@ -87,30 +90,29 @@ fun HomeScreen(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun HomeScreenLoaded(animeList: List<Anime>, modifier: Modifier = Modifier) {
     val list = listOf(animeList, animeList, animeList, animeList, animeList, animeList)
     var focusedListIndex by remember { mutableIntStateOf(0) }
-    val lazyListState = rememberLazyListState()
 
-    LaunchedEffect(lazyListState) {
-//        lazyListState.isScrollInProgress
-        println( " CZY JEST SCROLL? ${lazyListState.isScrollInProgress.toString()}")
-    }
-
-    LazyColumn(
-        modifier = modifier.fillMaxSize(),
-        state = lazyListState,
+    CompositionLocalProvider(
+        LocalBringIntoViewSpec provides FixCenterItemBringIntoViewSpec()
     ) {
-        itemsIndexed(list) { index, animeList ->
-            val bringIntoViewRequester = remember { BringIntoViewRequester() }
-            SampleImmersiveList(
-                animeList,
-                isFocused = index == focusedListIndex,
-                onFocusState = { focusedListIndex = index },
-                isFirst = index == 0,
-                bringIntoViewRequester = bringIntoViewRequester
-            )
+        LazyColumn(
+            modifier = modifier
+                .fillMaxSize(),
+        ) {
+            itemsIndexed(list) { index, animeList ->
+                val bringIntoViewRequester = remember { BringIntoViewRequester() }
+                SampleImmersiveList(
+                    animeList,
+                    isFocused = index == focusedListIndex,
+                    onFocusState = { focusedListIndex = index },
+                    isFirst = index == 0,
+                    bringIntoViewRequester = bringIntoViewRequester,
+                )
+            }
         }
     }
 }
@@ -123,18 +125,18 @@ fun <T : Anime> SampleImmersiveList(
     isFocused: Boolean,
     onFocusState: () -> Unit,
     isFirst: Boolean,
-    bringIntoViewRequester: BringIntoViewRequester
+    bringIntoViewRequester: BringIntoViewRequester,
 ) {
     var selectedItem by remember { mutableStateOf<T?>(null) }
     val focusRequester = remember { FocusRequester() }
     val coroutineScope = rememberCoroutineScope()
 
-//    if (isFirst) {
-//        LaunchedEffect(Unit) {
-//            delay(1000)
-//            focusRequester.requestFocus()
-//        }
-//    }
+    if (isFirst) {
+        LaunchedEffect(Unit) {
+            delay(1000)
+            focusRequester.requestFocus()
+        }
+    }
 
     LaunchedEffect(isFocused) {
         if (!isFocused)
@@ -144,8 +146,7 @@ fun <T : Anime> SampleImmersiveList(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-//            .height(if (isFocused) 470.dp else 150.dp)
-            .height(470.dp)
+            .height(if (isFocused) 470.dp else 150.dp)
             .bringIntoViewRequester(bringIntoViewRequester)
             .onFocusChanged({ focusState ->
                 if (focusState.hasFocus) {
@@ -169,7 +170,7 @@ fun <T : Anime> SampleImmersiveList(
 
 //                    .aspectRatio(20f / 7f)
             )
-        } else{
+        } else {
             itemList[0].genres?.get(0)?.name?.let { Text(it) }
         }
         val horizontalPaddingPx = with(LocalDensity.current) { 40.dp.toPx() }
@@ -197,10 +198,6 @@ fun <T : Anime> SampleImmersiveList(
                                 if (focusState.isFocused) {
                                     println("ANIME ${anime.title}")
                                     selectedItem = anime
-                                    coroutineScope.launch {
-                                        bringIntoViewRequester.bringIntoView()
-                                    }
-
                                 }
 
                             }, border = ClickableSurfaceDefaults.border(
@@ -219,13 +216,27 @@ fun <T : Anime> SampleImmersiveList(
                         )
                     }
                 }
-//                item { EmptyHorizontalCellScreen() }
+                item { EmptyHorizontalCellScreen() }
             }
         }
         selectedItem?.let {
             Box(modifier = Modifier.align(Alignment.CenterStart)) {
                 AnimeDescription(anime = selectedItem!!)
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+class FixCenterItemBringIntoViewSpec : BringIntoViewSpec {
+    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+        val trailingEdge = offset + size
+        @Suppress("UnnecessaryVariable") val leadingEdge = offset
+        return when {
+            leadingEdge >= 0 && trailingEdge <= containerSize -> 0f
+            leadingEdge < 0 && trailingEdge > containerSize -> 0f
+            abs(leadingEdge) < abs(trailingEdge - containerSize) -> leadingEdge
+            else -> trailingEdge - containerSize
         }
     }
 }
@@ -274,158 +285,3 @@ fun AnimeDescription(anime: Anime, modifier: Modifier = Modifier) {
         }
     }
 }
-
-
-//@OptIn(ExperimentalTvMaterial3Api::class)
-//@Composable
-//fun SampleImmersiveList(animeList: List<Anime>) {
-////    val items = remember { listOf(Color.Red, Color.Green, Color.Yellow) }
-//    var selectedItem by remember { mutableStateOf<Anime?>(null) }
-//
-//    // Container
-//    Box(
-//        modifier = Modifier
-//            .fillMaxWidth()
-//            .height(400.dp)
-//    ) {
-//
-//        selectedItem?.let {
-//            Box(
-//                modifier = Modifier
-//                    .fillMaxWidth()
-//                    .aspectRatio(20f / 7)
-//            ) {
-//                FullscreenTrailer(youtubeVideoId = selectedItem!!.trailer?.youtubeId ?: "0") { }
-//            }
-//        }
-//
-//        // Rows
-//        LazyRow(
-//            modifier = Modifier.align(Alignment.BottomEnd),
-//            horizontalArrangement = Arrangement.spacedBy(20.dp),
-//            contentPadding = PaddingValues(20.dp),
-//        ) {
-//            items(animeList) { anime ->
-//                Surface(
-//                    onClick = { },
-//                    modifier = Modifier
-//                        .width(100.dp)
-//                        .aspectRatio(9f / 16)
-//                        .onFocusChanged {
-//                            selectedItem = anime
-//                        },
-//                    border = ClickableSurfaceDefaults.border(
-//                        focusedBorder = Border(
-//                            border = BorderStroke(2.dp, Color.White),
-//                            inset = 4.dp,
-//                        )
-//                    )
-//                ) {
-//                    AsyncImage(
-//                        model = anime.images?.jpg?.imageUrl,
-//                        contentDescription = anime.malId.toString(),
-//                        modifier = Modifier.fillMaxSize(),
-//                        contentScale = ContentScale.Crop
-//                    )
-//                }
-//            }
-//        }
-//    }
-//}
-
-//@Composable
-//fun YouTubePlayer2(
-//    youtubeVideoId: String?,
-//    lifecycleOwner: LifecycleOwner,
-//    modifier: Modifier = Modifier
-//) {
-//    var youTubePlayerInstance by remember { mutableStateOf<YouTubePlayer?>(null) }
-//
-//    Surface(
-//        modifier = modifier
-//    ) {
-//        AndroidView(
-//            modifier = Modifier
-//                .fillMaxSize()
-//                .clip(RoundedCornerShape(10.dp)),
-//            factory = {
-//                YouTubePlayerView(context = it).apply {
-//                    lifecycleOwner.lifecycle.addObserver(this)
-//
-//
-//                    addYouTubePlayerListener(object : AbstractYouTubePlayerListener() {
-//                        override fun onReady(youTubePlayer: YouTubePlayer) {
-//                            super.onReady(youTubePlayer)
-//                            youTubePlayerInstance = youTubePlayer
-//                            youtubeVideoId?.let {
-//                                youTubePlayer.loadVideo(youtubeVideoId, 0f)
-//                            }
-//
-//                        }
-//                    })
-//                }
-//            },
-//            update = { youTubePlayerView ->
-//                youTubePlayerInstance?.let { player ->
-//                    youtubeVideoId?.let {
-//                        player.loadVideo(it, 0f)
-//                    }
-//                }
-//            }
-//
-//        )
-//    }
-//}
-
-//@OptIn(ExperimentalTvMaterial3Api::class, ExperimentalComposeUiApi::class)
-//@Composable
-//fun SampleImmersiveList(
-//    animeList: List<Anime>,
-//    onFocusChange: (Anime) -> Unit,
-//) {
-//    val focusRequester = remember { FocusRequester() }
-//
-//    LaunchedEffect(Unit) {
-//        focusRequester.requestFocus()
-//    }
-//    LazyRow(
-//        modifier = Modifier.focusProperties {
-//
-//        },
-//        horizontalArrangement = Arrangement.spacedBy(20.dp),
-//        contentPadding = PaddingValues(20.dp),
-//
-//        ) {
-//        itemsIndexed(animeList) { index, anime ->
-//            Surface(
-//                onClick = { },
-//                modifier = Modifier
-//                    .width(100.dp)
-//                    .aspectRatio(9f / 16)
-//                    .onFocusChanged {
-//                        if (it.hasFocus) {
-//                            onFocusChange(anime)
-//                        }
-//                    }
-//                    .then(
-//                        if (index == 0) Modifier.focusRequester(focusRequester)
-//                        else Modifier
-//                    ),
-//
-//                border = ClickableSurfaceDefaults.border(
-//                    focusedBorder = Border(
-//                        border = BorderStroke(2.dp, Color.White),
-//                        inset = 4.dp,
-//                    )
-//                )
-//            ) {
-//                AsyncImage(
-//                    model = anime.images?.jpg?.imageUrl,
-//                    contentDescription = anime.malId.toString(),
-//                    modifier = Modifier.fillMaxSize(),
-//                    contentScale = ContentScale.Crop
-//                )
-//            }
-//        }
-//    }
-//}
